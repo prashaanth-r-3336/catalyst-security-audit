@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Scratchpad / temp outputs
+scratch/
+tmp/
+*.tmp
+
+# Generated audit reports (never commit these — may contain sensitive findings)
+*-audit-report.html
+*-audit-report.md
+*-audit-report.pdf
+*-security-report.*
+audit-results/
