@@ -1,0 +1,26 @@
+{
+  "name": "catalyst-security-audit",
+  "displayName": "Catalyst Security Audit",
+  "version": "1.0.0",
+  "description": "Comprehensive post-development security audit for Catalyst by Zoho projects. Covers OWASP Top 10 (Catalyst-adapted), all 15 Catalyst components, scalability patterns, git history secret scanning, local workspace credential scan, and recent code change review. Produces PASS/FAIL reports with file:line findings and secure code examples.",
+  "author": {
+    "name": "Prashaanth R",
+    "email": "prashaanth.r@zohocorp.com",
+    "url": "https://github.com/prashaanth-r-3336"
+  },
+  "license": "MIT",
+  "keywords": [
+    "catalyst",
+    "zoho",
+    "security",
+    "audit",
+    "owasp",
+    "serverless",
+    "appsail",
+    "zcql",
+    "functions"
+  ],
+  "skills": "./skills/",
+  "homepage": "https://github.com/prashaanth-r-3336/catalyst-security-audit",
+  "repository": "https://github.com/prashaanth-r-3336/catalyst-security-audit"
+}
