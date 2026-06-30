@@ -24,7 +24,7 @@ A Claude Code skill for comprehensive post-development security auditing of [Cat
 ### Option 1 — Global (available in all Claude Code sessions)
 
 ```bash
-git clone https://github.com/YOUR_ORG/catalyst-security-audit.git
+git clone https://github.com/prashaanth-r-3336/catalyst-security-audit.git
 cd catalyst-security-audit
 ./install.sh
 ```
@@ -34,7 +34,7 @@ This copies the skill to `~/.claude/skills/catalyst-security-audit/` and creates
 ### Option 2 — Per-project
 
 ```bash
-git clone https://github.com/YOUR_ORG/catalyst-security-audit.git
+git clone https://github.com/prashaanth-r-3336/catalyst-security-audit.git
 cd catalyst-security-audit
 ./install.sh --project /path/to/your/catalyst-project
 ```
