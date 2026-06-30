@@ -1,0 +1,24 @@
+{
+  "name": "catalyst-security-audit",
+  "description": "Comprehensive post-development security audit skill for Catalyst by Zoho projects. Covers OWASP Top 10 (Catalyst-adapted), all 15 Catalyst components, scalability patterns, git history secret scanning, and recent code change review.",
+  "owner": {
+    "name": "Prashaanth R",
+    "email": "prashaanth.r@zohocorp.com"
+  },
+  "plugins": [
+    {
+      "name": "catalyst-security-audit",
+      "description": "Post-development security audit for Catalyst by Zoho projects. Runs parallel agents across 5 tracks: (1) Security — SEC-01 to SEC-16 covering ZCQL injection, Advanced I/O auth bypass, IDOR via row IDs, SSRF, local workspace secret scan, git history credential detection, route-level auth audit, OAuth error injection, full npm audit across all manifests. (2) Component correctness — all 15 Catalyst components (Functions, Data Store, Cache, NoSQL, File Store, AppSail, Circuits, Connections, Smart Browz, Signals, Pipelines, QuickML, Zia Services, Cron, Stratus). (3) Scalability — N+1 ZCQL, cold start, unbounded queries, job pools. (4) Recent code changes — last 30 days reviewed for regressions. (5) Explicit clean-area confirmation — every area reported SECURE or FINDING. Produces PASS/FAIL reports with file:line findings and secure code examples.",
+      "category": "security",
+      "tags": [
+        "catalyst",
+        "zoho",
+        "security",
+        "audit",
+        "owasp",
+        "serverless"
+      ],
+      "source": "./"
+    }
+  ]
+}
