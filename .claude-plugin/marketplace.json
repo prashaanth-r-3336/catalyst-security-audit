@@ -18,7 +18,8 @@
         "owasp",
         "serverless"
       ],
-      "source": "./"
+      "source": "./",
+      "commands": "./commands/"
     }
   ]
 }
