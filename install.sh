@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # Catalyst Security Audit — Claude Code Skill Installer
+#
+# Fallback path only — prefer the plugin/marketplace install:
+#   /plugin marketplace add prashaanth-r-3336/catalyst-security-audit
+#   /plugin install catalyst-security-audit@catalyst-security-audit
+#
 # Usage:
-#   ./install.sh                          # global install → ~/.claude/skills/
-#   ./install.sh --project /path/to/proj  # project install → /path/to/proj/.claude/skills/
+#   ./install.sh                          # global install → ~/.claude/
+#   ./install.sh --project /path/to/proj  # project install → /path/to/proj/.claude/
+#   ./install.sh --yes                    # skip the confirmation prompt (CI / non-interactive)
 
 set -euo pipefail
 
@@ -10,6 +16,7 @@ SKILL_NAME="catalyst-security-audit"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_MODE=false
 PROJECT_PATH=""
+ASSUME_YES=false
 
 # ── Parse args ──────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -19,11 +26,16 @@ while [[ $# -gt 0 ]]; do
       PROJECT_PATH="$2"
       shift 2
       ;;
+    --yes|-y)
+      ASSUME_YES=true
+      shift
+      ;;
     --help|-h)
-      echo "Usage: ./install.sh [--project /path/to/project]"
+      echo "Usage: ./install.sh [--project /path/to/project] [--yes]"
       echo ""
-      echo "  No args       Install globally to ~/.claude/skills/"
-      echo "  --project DIR Install into DIR/.claude/skills/ (per-project)"
+      echo "  No args       Install globally to ~/.claude/"
+      echo "  --project DIR Install into DIR/.claude/ (per-project)"
+      echo "  --yes         Skip the confirmation prompt"
       exit 0
       ;;
     *)
@@ -32,6 +44,12 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Non-interactive shells (CI, piped input) can't answer the confirm prompt —
+# treat that the same as --yes instead of failing silently under set -e.
+if [[ ! -t 0 ]]; then
+  ASSUME_YES=true
+fi
 
 # ── Determine target directory ────────────────────────────────────────────────
 if $PROJECT_MODE; then
@@ -53,7 +71,6 @@ else
 fi
 
 SKILL_DIR="$SKILLS_DIR/$SKILL_NAME"
-SKILL_ENTRY="$SKILLS_DIR/$SKILL_NAME.md"
 COMMAND_FILE="$COMMANDS_DIR/$SKILL_NAME.md"
 
 # ── Confirm ───────────────────────────────────────────────────────────────────
@@ -64,11 +81,16 @@ echo "  Install mode  : $INSTALL_MODE"
 echo "  Skill files   : $SKILL_DIR/"
 echo "  Slash command : $COMMAND_FILE"
 echo ""
-read -r -p "Proceed? [y/N] " confirm
-case "$confirm" in
-  [yY][eE][sS]|[yY]) ;;
-  *) echo "Aborted."; exit 0 ;;
-esac
+
+if $ASSUME_YES; then
+  echo "Proceeding non-interactively (--yes or no TTY detected)."
+else
+  read -r -p "Proceed? [y/N] " confirm
+  case "$confirm" in
+    [yY][eE][sS]|[yY]) ;;
+    *) echo "Aborted."; exit 0 ;;
+  esac
+fi
 
 # ── Install ───────────────────────────────────────────────────────────────────
 echo ""
@@ -78,50 +100,25 @@ mkdir -p "$SKILL_DIR/phases"
 mkdir -p "$SKILL_DIR/components"
 mkdir -p "$COMMANDS_DIR"
 
-# Copy main skill and supporting files
-cp "$SCRIPT_DIR/catalyst-security-audit.md" "$SKILL_DIR/"
+# Copy phases and components as-is
 cp "$SCRIPT_DIR/phases/"*.md "$SKILL_DIR/phases/"
 cp "$SCRIPT_DIR/components/"*.md "$SKILL_DIR/components/"
 
-# Create the skills/ entry point (for the skill tool reference)
-cat > "$SKILL_ENTRY" << EOF
-# Catalyst Security Audit Skill
+# Copy the canonical SKILL.md, substituting ${CLAUDE_PLUGIN_ROOT} with the real
+# install path — this installer isn't going through the plugin loader, so that
+# variable is never set at runtime for this copy.
+sed "s|\${CLAUDE_PLUGIN_ROOT}|${SKILL_DIR}|g" \
+  "$SCRIPT_DIR/skills/catalyst-security-audit/SKILL.md" > "$SKILL_DIR/SKILL.md"
 
-When this skill is invoked, read and follow the instructions in:
-${SKILL_DIR}/catalyst-security-audit.md
-
-The supporting phase files are at: ${SKILL_DIR}/phases/
-The component audit files are at:  ${SKILL_DIR}/components/
-
-Follow the orchestration steps in the main skill file exactly, substituting
-the above absolute paths wherever the skill references phase or component files.
-EOF
-
-# ── Register as a slash command (/catalyst-security-audit) ───────────────────
-# Commands in ~/.claude/commands/ are invocable as slash commands in Claude Code.
-# This is separate from the plugin skill system and is what enables /catalyst-security-audit.
-cat > "$COMMAND_FILE" << EOF
-Run a comprehensive post-development security audit of a Catalyst by Zoho project.
-
-Project path: use the argument if provided, otherwise use the current working directory.
-
-Read the full skill orchestrator at ${SKILL_DIR}/catalyst-security-audit.md and follow
-its instructions exactly, using these absolute paths:
-- SKILL_DIR = ${SKILL_DIR}
-- Phases:     ${SKILL_DIR}/phases/
-- Components: ${SKILL_DIR}/components/
-
-The skill runs 5 parallel tracks via the Workflow tool:
-1. Discovery — project profile, local workspace secrets, git history, scripts/, all routes
-2. Security — SEC-01 to SEC-16 (OWASP adapted for Catalyst)
-3. Scalability — N+1 ZCQL, cold start, unbounded queries, job pools
-4. Recent changes — last 30 days of commits reviewed for regressions
-5. Component audit — one agent per active Catalyst component
-
-Produce a PASS/FAIL report with severity, file:line, description, impact, fix, and
-secure code example for every finding. Include an "Areas Reviewed and Appearing Secure"
-table covering every area checked.
-EOF
+# Register as a slash command (/catalyst-security-audit).
+# The command template's paths assume the plugin layout (CLAUDE_PLUGIN_ROOT = repo
+# root, with skills/catalyst-security-audit/SKILL.md nested under it). This install
+# puts SKILL.md directly at $SKILL_DIR, so replace the whole nested-path expression,
+# not just the bare variable.
+sed "s|\${CLAUDE_PLUGIN_ROOT}/skills/catalyst-security-audit/SKILL.md|${SKILL_DIR}/SKILL.md|g; \
+     s|\${CLAUDE_PLUGIN_ROOT}|${SKILL_DIR}|g; \
+     s|\$ARGUMENTS|\$1|g" \
+  "$SCRIPT_DIR/commands/catalyst-security-audit.md" > "$COMMAND_FILE"
 
 echo ""
 echo "✓ Installed successfully."

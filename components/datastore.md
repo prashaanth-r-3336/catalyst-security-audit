@@ -124,6 +124,22 @@ grep -rn "ZCQL\|getRow\|insertRow" functions/ --include="*.js" | \
 
 ---
 
+## Correctness Checklist
+
+### DS-CORRECT-01 — Boolean Columns Read Without Conversion ★ Common Silent Bug
+
+Catalyst DataStore stores `boolean` columns as the TEXT strings `"true"`/`"false"`, not JS booleans. The string `"false"` is truthy in JavaScript, so any unconverted read makes every boolean check evaluate true.
+
+```bash
+# Reading a likely-boolean field directly in a conditional without string comparison
+grep -rn "if\s*(.*\.\(is\|has\|enabled\|active\|completed\|verified\)[A-Za-z]*)" functions/ --include="*.js" | \
+  grep -v "===\s*'true'\|===\s*true\|!==\s*'true'"
+```
+
+**Fix:** Always convert on read: `row.completed === 'true' || row.completed === true`. Write explicit strings for clarity: `insertRow({ completed: 'false' })`.
+
+---
+
 ## Scalability Checklist
 
 ### DS-SCALE-01 — N+1 Query Pattern
@@ -136,14 +152,16 @@ grep -rn "for\|while\|forEach\|\.map" functions/ --include="*.js" -A 5 | \
 
 ### DS-SCALE-02 — Unbounded Result Sets
 
+ZCQL hard-caps at **300 rows per query** and **20 columns per SELECT** (`SELECT *` counts as 1) regardless of LIMIT — code that assumes it gets "all matching rows" from a single query without checking the row count will silently under-read on large tables.
+
 ```bash
 # ZCQL SELECT without LIMIT
 grep -rn "\.ZCQL\|\.zcql" functions/ --include="*.js" | grep "SELECT" | grep -iv "LIMIT\|limit"
-# getRows without maxRows
-grep -rn "\.getRows(" functions/ --include="*.js" | grep -v "maxRows\|limit"
+# getRows/getPagedRows without maxRows
+grep -rn "\.getRows(\|\.getPagedRows(" functions/ --include="*.js" | grep -v "maxRows\|limit"
 ```
 
-**Fix:** Always add `LIMIT {n}` to ZCQL queries; set `maxRows` on `getRows()` calls. Implement cursor-based pagination.
+**Fix:** Always add `LIMIT offset, count` to ZCQL queries and loop until fewer than the page size is returned; use `getPagedRows()` (not the deprecated `getAllRows()`) with `next_token`/`more_records` for full-table reads.
 
 ### DS-SCALE-03 — No Index on Frequently Queried Columns
 

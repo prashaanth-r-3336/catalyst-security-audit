@@ -33,11 +33,13 @@ For each function directory (typically under `functions/`):
 
 | Type | Catalyst Name | Auth Required by Platform | Notes |
 |---|---|---|---|
-| Advanced I/O | `advancedio` | **No** — publicly accessible | Security-critical: must self-enforce auth if needed |
-| Basic I/O | `basicio` | **Yes** — Catalyst user session | Safe default; check auth context usage |
-| Cron | `cron` | No (internal scheduler) | Check if also HTTP-invocable |
-| Event | `event` | Internal event system | Check event source validation |
-| Event Listener | `eventlistener` | Internal | Check listener scope |
+| Advanced I/O | `advancedio` | **No by default** — gated only by Security Rules (`authentication: optional/required`) | Security-critical: check Security Rules, don't assume type implies auth |
+| Basic I/O | `basicio` | **No by default** — same Security Rules gate as Advanced I/O | Common misconception: I/O type does NOT determine auth |
+| Job | `job` | Internal (Job Scheduling) | Preferred over legacy Cron for new scheduled/background work |
+| Cron | `cron` | Internal (legacy scheduler) | Still functional but deprecated in favor of Job — flag as INFO if found in a new project |
+| Event | `event` | Internal — triggered by Signals | Standalone "Event Listener" service is deprecated; check event source/signal validation |
+| Integration | `integration` | Internal — Zoho service triggers | Verify the triggering Zoho service/event is expected |
+| Browser Logic | `browserlogic` | N/A (SmartBrowz-invoked) | See `components/smartbrowz.md` |
 
 3. For each function, record:
    - Function name
@@ -71,7 +73,7 @@ Scan all function source files for these SDK usage patterns:
 | Zia Services | `catalyst.zia()` | `catalyst.Zia()` | `catalyst.zia()` |
 | Job Scheduling | `catalyst.jobschedule()` | `catalyst.JobSchedule()` | `catalyst.jobSchedule()` |
 | Stratus | `stratus` in config, static assets present | same | same |
-| Auth | `catalyst.auth()` | `catalyst.Auth()` | `catalyst.auth()` |
+| Auth | `.userManagement()` after `catalyst.initialize(...)` | `catalyst.UserManagement()` | `catalyst.userManagement()` |
 
 Record which components are actively used (not just imported).
 
@@ -200,7 +202,7 @@ The `scripts/` directory typically holds one-off utility scripts that were writt
 find {projectPath}/scripts -type f \( -name "*.js" -o -name "*.mjs" -o -name "*.py" -o -name "*.sh" \) 2>/dev/null
 
 # Grep for credential patterns
-grep -rn "client_secret\|refresh_token\|apiKey\|Bearer\|Authorization.*['\"][A-Za-z0-9]{20,}\|token.*=.*['\"][A-Za-z0-9]{20,}" \
+grep -rEn "client_secret|refresh_token|apiKey|Bearer|Authorization.*['\"][A-Za-z0-9]{20,}|token.*=.*['\"][A-Za-z0-9]{20,}" \
   {projectPath}/scripts/ 2>/dev/null | grep -v "process\.env"
 ```
 

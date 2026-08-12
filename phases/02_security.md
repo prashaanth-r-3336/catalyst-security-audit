@@ -14,36 +14,39 @@ You are the Security Audit agent. You have the Project Profile from Phase 1. Aud
 ### SEC-01 — Function Authentication Model
 
 **Risk:** CRITICAL  
-Catalyst Advanced I/O functions are **publicly accessible** — no Catalyst-enforced auth. Basic I/O functions require a valid Catalyst session. Developers frequently use Advanced I/O for endpoints that should be protected.
+**Both** Basic I/O and Advanced I/O functions are **publicly accessible by default** — I/O type does not determine auth. The actual gate is **Security Rules**, a per-function JSON setting with `"authentication"`: `"optional"` (default — anyone can invoke) or `"required"` (authenticated Catalyst users only). Security Rules is binary and applies function-wide, not per-route or per-method (methods are gated separately by the `methods` field). Note: enabling API Gateway on a function disables Security Rules for it — check which layer is active before concluding a function is unprotected.
 
 **Check:**
-1. For every function with type `advancedio` in the Project Profile:
-   - Does the function handle user-specific data or perform write operations?
-   - Does it call `catalyst.auth().getCurrentUser()` or equivalent auth context extraction at the top of the handler?
-   - If it serves data, does it verify the authenticated user owns that data?
+1. For every function in the Project Profile (any type with an HTTP entry point):
+   - What does its Security Rules config set `authentication` to? (Check the function's Security Rules JSON, or API Gateway config if that's the active layer instead.)
+   - If `authentication` is `optional` (or unset — same as optional) AND the function reads/writes user-specific data or performs mutations → CRITICAL.
 
-2. For every function with type `basicio`:
-   - Does it properly extract and validate the user context from `context.catalyst.auth()` before using user identity claims?
-   - Is there any path in the function that bypasses the auth context and uses a user-supplied identity claim from the request body instead?
+2. Independent of Security Rules, for every function serving user-owned data:
+   - Does the handler resolve identity via user-scope SDK — `catalyst.initialize(req).userManagement().getCurrentUser()` (or context-equivalent for Basic I/O) — rather than trusting a client-supplied ID?
+   - `getCurrentUser()` returns `null` for collaborators/project admins (not registered app users) — code must handle that, not crash or silently treat null as authenticated.
+   - If it serves a specific resource, does it verify the authenticated user owns that resource (see SEC-06/IDOR)?
 
 **Grep patterns:**
 ```bash
-# Advanced I/O functions — list them
-grep -r "advancedio\|\"type\": \"Advanced I/O\"" catalyst-config.json functions/
+# List all functions and their type
+grep -r "\"type\"\s*:\s*\"\(basicio\|advancedio\)\"" catalyst-config.json functions/*/catalyst-config.json 2>/dev/null
 
-# Check if Advanced I/O functions have auth checks
-# (absence of auth check in an advancedio function = finding)
+# Find each function's Security Rules — look for the authentication field
+grep -rn "\"authentication\"" functions/*/catalyst-config.json functions/*/security-rules.json 2>/dev/null
 
-# Functions trusting user-supplied identity (risky)
-grep -r "req.body.userId\|req.body.user_id\|req.query.userId" functions/ --include="*.js"
+# Functions trusting user-supplied identity instead of the auth context (risky)
+grep -rEn "req\.body\.userId|req\.body\.user_id|req\.query\.userId" functions/ --include="*.js"
+
+# Correct pattern — resolving identity via the SDK
+grep -rn "userManagement()\.getCurrentUser\|catalyst\.initialize" functions/ --include="*.js"
 ```
 
 **Finding format:**
 ```
-[SEC-01] CRITICAL: Advanced I/O function '{name}' handles sensitive data without auth check
-File: functions/{name}/index.js
-Exploit: Attacker calls the public endpoint directly, accessing/modifying other users' data
-Fix: Add catalyst.auth().getCurrentUser() at handler entry; return 401 if no session; verify resource ownership
+[SEC-01] CRITICAL: Function '{name}' has Security Rules authentication=optional but handles sensitive data
+File: functions/{name}/catalyst-config.json (or security-rules.json)
+Exploit: Attacker calls the public endpoint directly — Security Rules does not require a session, so no auth check runs before the handler
+Fix: Set "authentication": "required" in the function's Security Rules; inside the handler, resolve identity via catalyst.initialize(req).userManagement().getCurrentUser() and verify resource ownership before returning data
 ```
 
 ---
@@ -82,16 +85,16 @@ Secrets hardcoded in Catalyst function source code are exposed to anyone with re
 **Check:**
 1. Grep for patterns suggesting hardcoded secrets:
 ```bash
-grep -rn "apiKey\s*=\s*['\"][A-Za-z0-9+/]{20,}" functions/
-grep -rn "secret\s*[=:]\s*['\"][^'\"]{8,}" functions/ -i
-grep -rn "password\s*[=:]\s*['\"][^'\"]{4,}" functions/ -i
-grep -rn "token\s*[=:]\s*['\"][A-Za-z0-9._-]{20,}" functions/ -i
-grep -rn "Bearer [A-Za-z0-9._-]{20,}" functions/
-grep -rn "Authorization.*['\"][A-Za-z0-9+/]{20,}" functions/
+grep -rEn "apiKey\s*=\s*['\"][A-Za-z0-9+/]{20,}" functions/
+grep -rEn "secret\s*[=:]\s*['\"][^'\"]{8,}" functions/ -i
+grep -rEn "password\s*[=:]\s*['\"][^'\"]{4,}" functions/ -i
+grep -rEn "token\s*[=:]\s*['\"][A-Za-z0-9._-]{20,}" functions/ -i
+grep -rEn "Bearer [A-Za-z0-9._-]{20,}" functions/
+grep -rEn "Authorization.*['\"][A-Za-z0-9+/]{20,}" functions/
 # AWS-style keys
-grep -rn "AKIA[0-9A-Z]{16}" functions/
+grep -rEn "AKIA[0-9A-Z]{16}" functions/
 # Zoho auth tokens
-grep -rn "1000\.[a-z0-9]{32}\.[a-z0-9]{32}" functions/
+grep -rEn "1000\.[a-z0-9]{32}\.[a-z0-9]{32}" functions/
 ```
 
 2. For each environment variable used for secrets: is it defined in Catalyst project config (under Environment Variables in Catalyst console) or in a committed `.env` file?
@@ -255,7 +258,7 @@ grep -rn "req\.body\.userId\|req\.body\.email\|req\.body\.user_id\|req\.query\.u
 grep -rn "getCurrentUser\|auth()\.getCurrentUser\|auth\.getCurrentUser" functions/ --include="*.js"
 ```
 
-If a function uses `req.body.userId` without also validating it against `catalyst.auth().getCurrentUser()`, that's a finding.
+If a function uses `req.body.userId` without also validating it against `catalyst.initialize(req).userManagement().getCurrentUser()`, that's a finding.
 
 ---
 
@@ -438,6 +441,14 @@ done
 Report separately for each manifest:
 - Total vulnerabilities by severity
 - Specific CVEs for any CRITICAL/HIGH findings
+- Whether the vulnerable package is a **direct** or **transitive** dependency
+- Whether it's in production dependencies or dev-only (`devDependencies`)
 - Whether `npm audit fix` was run
 
-**Flag:** any package manifest where `npm audit` reports vulnerabilities that have not been addressed.
+**Severity scoping (do not blanket-FAIL on this check):**
+- **Blocking (counts toward FAIL):** CRITICAL/HIGH in a **direct, production** dependency with a known exploitable path reachable from this project's code.
+- **Advisory (report, but do not FAIL the verdict on its own):** CRITICAL/HIGH that is **transitive-only** or **dev-dependency-only** (e.g. build tooling, test runners) with no reachable exploit path in this project. Most real repos carry some of these — treating every transitive npm HIGH as a hard FAIL makes the verdict noise, not signal.
+
+List advisory findings under a clearly separate "Dependency Advisories (non-blocking)" heading in the report rather than mixing them into the blocking CRITICAL/HIGH sections.
+
+**Flag:** any package manifest where `npm audit` reports vulnerabilities that have not been addressed, scoped as above.

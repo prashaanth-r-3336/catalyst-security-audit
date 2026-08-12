@@ -23,7 +23,40 @@ grep -rn "^ARG.*SECRET\|^ARG.*KEY\|^ARG.*TOKEN" */Dockerfile* 2>/dev/null
 grep -rn "COPY.*\.env\|ADD.*\.env" */Dockerfile* 2>/dev/null
 ```
 
-**Fix:** Use Catalyst AppSail Environment Variables (set in Catalyst console); access via `process.env.VAR` at runtime — never bake into image.
+**Fix:** For linked apps, define env vars in `app-config.json`'s `env_variables` (this fully replaces Console-set vars on every deploy — an empty `{}` means the runtime sees none even though the Console UI still shows them). For standalone/Console-deployed apps, Console is the source of truth. Never bake secrets into the image; access via `process.env.VAR` at runtime.
+
+---
+
+### SAIL-SEC-1B — Hardcoded Port Instead of X_ZOHO_CATALYST_LISTEN_PORT ★ HIGH
+
+AppSail injects the listening port via `X_ZOHO_CATALYST_LISTEN_PORT` (default 9000) — apps that hardcode `PORT` or `3000` fail to start ("Execution failed. Please check the startup command or port") since Catalyst checks that the process is bound to the correct port within 10 seconds.
+
+```bash
+# Hardcoded port instead of the Catalyst env var
+grep -rn "\.listen(3000\|\.listen(8080\|\.listen(process\.env\.PORT" appsail/ --include="*.js"
+
+# Correct pattern
+grep -rn "X_ZOHO_CATALYST_LISTEN_PORT" appsail/ --include="*.js"
+```
+
+**Fix:**
+```js
+const PORT = process.env.X_ZOHO_CATALYST_LISTEN_PORT || 9000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+```
+For Docker/custom-runtime apps, `--port` on `catalyst deploy appsail` is the equivalent override — never hardcode a port in the image and expect it to be used.
+
+---
+
+### SAIL-SEC-1C — `catalyst_auth` Flag Misconfigured for Custom Auth ★ HIGH
+
+`app-config.json`'s `catalyst_auth` field is security-sensitive: `true` wraps the AppSail service in Catalyst's own SSO layer (intercepts every request); `false` (default) leaves auth entirely to the app. An app implementing its own OAuth/session auth with `catalyst_auth: true` will have its custom auth flow silently broken by the interception.
+
+```bash
+grep -rn "\"catalyst_auth\"" appsail/*/app-config.json 2>/dev/null
+```
+
+**Flag:** `catalyst_auth: true` alongside app code implementing custom login/OAuth handling — the two auth layers conflict.
 
 ---
 

@@ -194,7 +194,7 @@ Fix: Create a Job Pool first, then submit all jobs to the pool for parallel exec
 # External calls without retry
 grep -rn "fetch\|axios\|request(" functions/ --include="*.js" | grep -v "retry\|Retry\|attempt"
 # Connection API calls without error retry
-grep -rn "catalyst.connection()\|connection.invoke\|connection.send" functions/ --include="*.js" -A 5 | grep -v "catch\|retry"
+grep -rn "getConnector\|getAccessToken" functions/ --include="*.js" -A 8 | grep -v "catch\|retry"
 ```
 
 **Finding format:**

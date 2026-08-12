@@ -8,7 +8,7 @@ A Claude Code skill for comprehensive post-development security auditing of [Cat
 
 | Track | What gets checked |
 |---|---|
-| **Security** | OWASP Top 10 adapted for Catalyst: ZCQL injection, function auth bypass (Advanced I/O vs Basic I/O), IDOR via row IDs, SSRF, secret leakage in tracked files + gitignored local files + git history + scripts/, OAuth error injection, every route for auth middleware, npm audit across all package manifests |
+| **Security** | OWASP Top 10 adapted for Catalyst: Security Rules auth gaps (both Basic I/O and Advanced I/O are public by default — I/O type does not determine auth), ZCQL injection, IDOR via row IDs, SSRF, secret leakage in tracked files + gitignored local files + git history + scripts/, OAuth error injection, every route for auth middleware, npm audit across all package manifests |
 | **Components** | All 15 Catalyst components in use: Functions, Data Store, Cache, NoSQL, File Store, AppSail, Circuits, Connections, Smart Browz, Signals, Pipelines, QuickML, Zia Services, Cron/Job Scheduling, Stratus |
 | **Scalability** | N+1 ZCQL, cold start patterns, sync/async boundary violations, unbounded queries, cache strategy gaps, job pool usage, global state in AppSail |
 | **Recent changes** | Last 30 days of commits — new secrets in diffs, new unprotected routes, dependency downgrades, auth regressions, accidentally tracked sensitive files |
@@ -21,38 +21,28 @@ A Claude Code skill for comprehensive post-development security auditing of [Cat
 
 ## Installation
 
-### Option 1 — Global (available in all Claude Code sessions)
+### Option 1 — Plugin marketplace (recommended)
+
+Inside Claude Code:
+
+```
+/plugin marketplace add prashaanth-r-3336/catalyst-security-audit
+/plugin install catalyst-security-audit@catalyst-security-audit
+```
+
+If the install summary says to run `/reload-plugins`, do that. This is the actively maintained path — `skills/`, `commands/`, and `.claude-plugin/plugin.json` are all wired for it.
+
+### Option 2 — install.sh (fallback)
 
 ```bash
 git clone https://github.com/prashaanth-r-3336/catalyst-security-audit.git
 cd catalyst-security-audit
-./install.sh
+./install.sh                                        # global → ~/.claude/
+./install.sh --project /path/to/your/catalyst-project # per-project → .claude/
+./install.sh --yes                                   # skip the confirmation prompt (CI)
 ```
 
-This copies the skill to `~/.claude/skills/catalyst-security-audit/` and creates an entry point at `~/.claude/skills/catalyst-security-audit.md`.
-
-### Option 2 — Per-project
-
-```bash
-git clone https://github.com/prashaanth-r-3336/catalyst-security-audit.git
-cd catalyst-security-audit
-./install.sh --project /path/to/your/catalyst-project
-```
-
-This installs to `.claude/skills/catalyst-security-audit/` inside your project directory.
-
-### Option 3 — Manual
-
-Copy the entire repository contents into `.claude/skills/catalyst-security-audit/` in your project (or `~/.claude/skills/catalyst-security-audit/` globally), then create a wrapper skill file:
-
-```bash
-mkdir -p ~/.claude/skills/catalyst-security-audit
-cp -r phases components catalyst-security-audit.md ~/.claude/skills/catalyst-security-audit/
-
-cat > ~/.claude/skills/catalyst-security-audit.md << 'EOF'
-Read ~/.claude/skills/catalyst-security-audit/catalyst-security-audit.md and follow its instructions exactly.
-EOF
-```
+This copies `phases/` and `components/`, plus a resolved copy of `skills/catalyst-security-audit/SKILL.md`, into `~/.claude/skills/catalyst-security-audit/` (or the per-project equivalent), and registers `/catalyst-security-audit` as a slash command.
 
 ---
 
@@ -106,11 +96,18 @@ IMMEDIATE ACTIONS REQUIRED
 
 ```
 catalyst-security-audit/
-├── catalyst-security-audit.md      ← Main skill (orchestrator + workflow script)
-├── install.sh                      ← Installation script
+├── .claude-plugin/
+│   ├── plugin.json                 ← Plugin manifest (name, version, skills/commands paths)
+│   └── marketplace.json            ← Marketplace listing
+├── skills/catalyst-security-audit/
+│   └── SKILL.md                    ← Canonical orchestrator (single source of truth)
+├── commands/catalyst-security-audit.md  ← Slash command — thin pointer to SKILL.md
+├── .cursor-plugin/                 ← Cursor rule (self-contained — no Workflow-tool equivalent)
+├── install.sh                      ← Fallback installer (see Installation above)
+├── LICENSE
 ├── phases/
 │   ├── 01_discovery.md             ← Project profile: components, functions, local files, git history, scripts
-│   ├── 02_security.md              ← SEC-01 to SEC-16: OWASP, local secrets, routes, OAuth, deps
+│   ├── 02_security.md              ← SEC-01 to SEC-16: Security Rules auth model, injection, secrets, routes, OAuth, deps
 │   ├── 03_scalability.md           ← Catalyst-specific scalability patterns
 │   ├── 04_report.md                ← PASS/FAIL report format with secure-areas table
 │   └── 05_recent_changes.md        ← Last 30 days of commits review
@@ -138,7 +135,7 @@ catalyst-security-audit/
 
 | ID | Area | Risk |
 |---|---|---|
-| SEC-01 | Function auth model (Advanced I/O vs Basic I/O) | CRITICAL |
+| SEC-01 | Security Rules auth gap (authentication: optional on sensitive data — not an I/O-type issue) | CRITICAL |
 | SEC-02 | ZCQL injection via string concatenation | CRITICAL |
 | SEC-03 | Hardcoded secrets in tracked source files | HIGH |
 | SEC-04 | SSRF via user-controlled external calls | HIGH |
@@ -173,9 +170,9 @@ SEC-11 through SEC-16 were added based on analysis of real-world audit patterns 
 ## Contributing
 
 Phase files (`phases/`) and component files (`components/`) are designed to be standalone agent prompts. Each can be updated independently:
-- Add new Catalyst components by adding a file to `components/`
+- Add new Catalyst components by adding a file to `components/` and adding its slug to the `components_in_use` enum in `phases/01_discovery.md` and `skills/catalyst-security-audit/SKILL.md`
 - Add new security checks to `phases/02_security.md`
-- Update the orchestrator in `catalyst-security-audit.md` to include new agents
+- Update the orchestrator in `skills/catalyst-security-audit/SKILL.md` to include new agents — this is the single canonical copy; `commands/catalyst-security-audit.md` just points to it
 
 ---
 

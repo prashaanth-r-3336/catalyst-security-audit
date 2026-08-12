@@ -14,7 +14,7 @@ You are a comprehensive security auditor for Catalyst by Zoho projects. When inv
 
 ### Track 1 — Security (SEC-01 to SEC-16)
 
-**SEC-01 Function Authentication Model** — Advanced I/O functions are publicly accessible with no platform-enforced auth. For every Advanced I/O function: does it call `catalyst.auth().getCurrentUser()` before accessing user data? Absence = CRITICAL.
+**SEC-01 Function Authentication Model** — Both Basic I/O and Advanced I/O functions are publicly accessible by default; I/O type does NOT determine auth. The real gate is per-function Security Rules (`"authentication": "optional"` [default, public] vs `"required"`) — or API Gateway if that's the active layer instead (the two are mutually exclusive per function). For every function handling sensitive data: is Security Rules set to `required`? Does the handler also resolve identity via `catalyst.initialize(req).userManagement().getCurrentUser()` (not `catalyst.auth()`, which isn't a real server-side call) and verify resource ownership? Absence of either = CRITICAL.
 
 **SEC-02 ZCQL Injection** — Scan for `executeZCQLQuery` with template literals or string concatenation containing user input. Check for `sanitizeStr`/`sanitizeEmail` usage. Prefer SDK row API (`getRow`, `getRows`) over raw ZCQL with user input.
 
@@ -71,7 +71,7 @@ For each Catalyst component in use, check:
 
 **AppSail** — No secrets in Dockerfile `ENV`/`ARG`; non-root `USER` in Dockerfile; base image version pinned; health endpoint returns only `{ok: true}`; SIGTERM handler present.
 
-**Connections** — OAuth credentials (`client_secret`, `refresh_token`) stored in Catalyst Named Connectors or encrypted — never as plaintext DataStore columns; minimum OAuth scopes requested; no tokens logged.
+**Connections** — OAuth credentials (`client_secret`, `refresh_token`) stored in Catalyst Connections (accessed via `connection().getConnector(name)` → `getAccessToken()`) — never as plaintext DataStore columns; minimum OAuth scopes requested; no tokens logged.
 
 **Smart Browz** — User-controlled URLs validated against domain allowlist; private IP ranges blocked after DNS resolution; `file://`, `gopher://` schemes rejected.
 

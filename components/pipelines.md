@@ -91,7 +91,7 @@ Long-running pipelines without progress tracking restart from the beginning on f
 ### PIPE-SCALE-03 — External API Calls in Tight Inner Loop
 
 ```bash
-grep -rn "fetch\|axios\|connection.*invoke" functions/ --include="*.js" -B 5 | \
+grep -rn "fetch\|axios\|getAccessToken" functions/ --include="*.js" -B 5 | \
   grep "for\|while\|forEach\|\.map" | \
   grep -li "pipeline\|transform" $(find functions -name "index.js") 2>/dev/null
 ```

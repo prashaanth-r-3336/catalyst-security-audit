@@ -194,19 +194,21 @@ WHAT TO DO NEXT
 
 **FAIL** if any of:
 - 1 or more CRITICAL findings
-- 1 or more HIGH findings
+- 1 or more **blocking** HIGH findings — see the dependency scoping note below for SEC-07/SEC-16
 - Hard-coded secrets detected anywhere
-- Advanced I/O functions handling sensitive data without auth checks
+- A function handling sensitive data with Security Rules `authentication: optional` (or no Security Rules at all)
 - ZCQL string concatenation with user input
+
+**Dependency finding scoping (SEC-07 / SEC-16):** A CRITICAL/HIGH from a dependency audit is **blocking** only if it's in a direct, production dependency with a reachable exploit path. A CRITICAL/HIGH that is transitive-only or dev-dependency-only is **advisory** — list it under "Dependency Advisories (non-blocking)" and do not let it alone flip the verdict to FAIL. This prevents near-every real repo from failing solely on unavoidable transitive npm noise.
 
 **PASS** if all of:
 - Zero CRITICAL findings
-- Zero HIGH findings
+- Zero blocking HIGH findings (advisory dependency findings may still be present — list them)
 - All secrets in Catalyst Environment Variables or Connections
-- All functions with appropriate auth for their type
+- Every function handling sensitive data has Security Rules `authentication: required` (or equivalent API Gateway protection) plus in-handler identity resolution via `userManagement().getCurrentUser()`
 - All ZCQL queries using SDK methods or parameterized patterns
 
-**PASS with conditions** — if MEDIUM findings exist but no CRITICAL/HIGH: note them and require fix before next major release.
+**PASS with conditions** — if MEDIUM findings or advisory-only dependency findings exist but no CRITICAL/blocking-HIGH: note them and require fix before next major release.
 
 ---
 
