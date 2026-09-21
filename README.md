@@ -54,16 +54,25 @@ This copies `phases/` and `components/`, plus a resolved copy of `skills/catalys
 In any Claude Code session pointed at a Catalyst project:
 
 ```
-/catalyst-security-audit
+/catalyst-security-audit:audit          # plugin marketplace install (Option 1)
+/catalyst-security-audit                # install.sh fallback (Option 2)
 ```
 
 To audit a specific directory:
 
 ```
+/catalyst-security-audit:audit /path/to/your/catalyst-project
 /catalyst-security-audit /path/to/your/catalyst-project
 ```
 
-Running `/catalyst-security-audit`, or explicitly asking for a full/comprehensive audit, triggers **full audit mode** below. Asking a narrow security question about a Catalyst project (e.g. "does this function need Security Rules?") instead gets a direct answer in **guidance mode**, without spinning up the full workflow.
+> The command name differs by install method because the plugin marketplace namespaces
+> commands as `<plugin-name>:<command-name>`, and this plugin's skill already claims the
+> bare `catalyst-security-audit:catalyst-security-audit` name — `audit.md` avoids colliding
+> with it in the command palette. The install.sh fallback isn't plugin-namespaced, so it
+> keeps the short `/catalyst-security-audit` name. Either way, a plain natural-language
+> audit request also matches the skill directly — no exact command needed.
+
+Running the command above, or explicitly asking for a full/comprehensive audit, triggers **full audit mode** below. Asking a narrow security question about a Catalyst project (e.g. "does this function need Security Rules?") instead gets a direct answer in **guidance mode**, without spinning up the full workflow.
 
 The full audit runs in phases:
 1. **Discovery** — builds a project profile (sequential; all later phases depend on this)
@@ -115,7 +124,8 @@ catalyst-security-audit/
 │   └── marketplace.json            ← Marketplace listing
 ├── skills/catalyst-security-audit/
 │   └── SKILL.md                    ← Canonical orchestrator (single source of truth)
-├── commands/catalyst-security-audit.md  ← Slash command — thin pointer to SKILL.md
+├── commands/audit.md                ← Slash command — thin pointer to SKILL.md (named to avoid
+│                                        colliding with the skill's namespaced command name)
 ├── .cursor-plugin/                 ← Cursor rule (self-contained — no Workflow-tool equivalent)
 ├── install.sh                      ← Fallback installer (see Installation above)
 ├── LICENSE
@@ -187,7 +197,7 @@ SEC-11 through SEC-16 were added based on analysis of real-world audit patterns 
 Phase files (`phases/`) and component files (`components/`) are designed to be standalone agent prompts. Each can be updated independently:
 - Add new Catalyst components by adding a file to `components/` and adding its slug to the `components_in_use` enum in `phases/01_discovery.md` and `skills/catalyst-security-audit/SKILL.md`
 - Add new security checks to `phases/02_security.md`
-- Update the orchestrator in `skills/catalyst-security-audit/SKILL.md` to include new agents — this is the single canonical copy; `commands/catalyst-security-audit.md` just points to it
+- Update the orchestrator in `skills/catalyst-security-audit/SKILL.md` to include new agents — this is the single canonical copy; `commands/audit.md` just points to it
 
 ---
 

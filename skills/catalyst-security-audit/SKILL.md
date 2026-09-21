@@ -5,11 +5,13 @@ description: Comprehensive post-development security audit for Catalyst by Zoho 
 
 # Catalyst Security Audit
 
-**Trigger:** `/catalyst-security-audit [optional: path/to/project]`
+**Trigger:** `/catalyst-security-audit:audit [optional: path/to/project]` (plugin marketplace install) or `/catalyst-security-audit [optional: path/to/project]` (install.sh fallback) — or a natural-language audit request, which matches this skill directly.
 **Mode:** Post-development audit — point at an existing Catalyst project directory
 **Output:** PASS/FAIL report with severity-ranked findings, exploit scenarios, and Catalyst-specific fixes
 
-This is the single canonical orchestrator for this skill. `commands/catalyst-security-audit.md` (the slash command) and the Cursor rule at `.cursor-plugin/index.mdc` both point back to this file (Cursor's copy is self-contained since it has no Workflow-tool equivalent) — if you're updating audit logic, update it here first.
+This is the single canonical orchestrator for this skill. `commands/audit.md` (the slash command, invoked in a plugin install as `/catalyst-security-audit:audit`) and the Cursor rule at `.cursor-plugin/index.mdc` both point back to this file (Cursor's copy is self-contained since it has no Workflow-tool equivalent) — if you're updating audit logic, update it here first.
+
+`commands/audit.md` was deliberately renamed away from `catalyst-security-audit.md` — the plugin name, this skill's `name:`, and the old command filename all collapsed to the identical namespaced string `catalyst-security-audit:catalyst-security-audit`, producing two indistinguishable entries in the command palette (see git history for details if this resurfaces).
 
 ---
 

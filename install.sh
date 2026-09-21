@@ -118,7 +118,7 @@ sed "s|\${CLAUDE_PLUGIN_ROOT}|${SKILL_DIR}|g" \
 sed "s|\${CLAUDE_PLUGIN_ROOT}/skills/catalyst-security-audit/SKILL.md|${SKILL_DIR}/SKILL.md|g; \
      s|\${CLAUDE_PLUGIN_ROOT}|${SKILL_DIR}|g; \
      s|\$ARGUMENTS|\$1|g" \
-  "$SCRIPT_DIR/commands/catalyst-security-audit.md" > "$COMMAND_FILE"
+  "$SCRIPT_DIR/commands/audit.md" > "$COMMAND_FILE"
 
 echo ""
 echo "✓ Installed successfully."
