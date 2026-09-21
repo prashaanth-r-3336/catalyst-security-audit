@@ -1,6 +1,8 @@
 # Catalyst Security Audit — Claude Code Skill
 
-A Claude Code skill for comprehensive post-development security auditing of [Catalyst by Zoho](https://catalyst.zoho.com) projects. Point it at any Catalyst repository and get a structured PASS/FAIL report covering security, component correctness, scalability, and recent code changes.
+A Claude Code skill for comprehensive post-development security auditing of [Catalyst by Zoho](https://catalyst.zoho.com) projects. Point it at any Catalyst repository and get a structured PASS/FAIL report covering security, component correctness, scalability, recent code changes, and independent verification of every CRITICAL/HIGH finding before it can drive the verdict.
+
+For a narrow security question ("is this query injectable?"), the skill answers directly in **guidance mode** instead of running the full audit — see [Usage](#usage).
 
 ---
 
@@ -12,6 +14,7 @@ A Claude Code skill for comprehensive post-development security auditing of [Cat
 | **Components** | All 15 Catalyst components in use: Functions, Data Store, Cache, NoSQL, File Store, AppSail, Circuits, Connections, Smart Browz, Signals, Pipelines, QuickML, Zia Services, Cron/Job Scheduling, Stratus |
 | **Scalability** | N+1 ZCQL, cold start patterns, sync/async boundary violations, unbounded queries, cache strategy gaps, job pool usage, global state in AppSail |
 | **Recent changes** | Last 30 days of commits — new secrets in diffs, new unprotected routes, dependency downgrades, auth regressions, accidentally tracked sensitive files |
+| **Verification** | Every CRITICAL/HIGH candidate is re-checked by a fresh pass that tries to disprove it (wrong code read, no real boundary crossed, invented API, or a fact only visible in the Catalyst console) before it can drive the PASS/FAIL verdict |
 | **Explicit clean areas** | Every area is reported SECURE or FINDING — nothing is silently skipped |
 
 **For every finding:** Severity · File:Line · Description · Impact · Recommended fix · Secure code example  
@@ -60,10 +63,13 @@ To audit a specific directory:
 /catalyst-security-audit /path/to/your/catalyst-project
 ```
 
-The skill runs in phases:
+Running `/catalyst-security-audit`, or explicitly asking for a full/comprehensive audit, triggers **full audit mode** below. Asking a narrow security question about a Catalyst project (e.g. "does this function need Security Rules?") instead gets a direct answer in **guidance mode**, without spinning up the full workflow.
+
+The full audit runs in phases:
 1. **Discovery** — builds a project profile (sequential; all later phases depend on this)
 2. **Parallel fan-out** — security audit, scalability audit, recent-changes review, and one agent per active Catalyst component all run simultaneously
-3. **Report** — synthesizes all findings into a PASS/FAIL report
+3. **Verification** — every CRITICAL/HIGH candidate from step 2 is re-checked by a fresh agent that tries to refute it; only `confirmed` candidates can drive the verdict, `needs_validation` candidates (blocked on a console-only fact) get their own report section with no severity, and `rejected` candidates are dropped
+4. **Report** — synthesizes all findings into a PASS/FAIL report
 
 ---
 
@@ -73,12 +79,20 @@ The skill runs in phases:
 VERDICT: PASS | FAIL
 
 FINDINGS SUMMARY
-  CRITICAL  │  N
-  HIGH      │  N
+  CRITICAL  │  N   (confirmed)
+  HIGH      │  N   (confirmed)
   MEDIUM    │  N
   LOW       │  N
 
-[Full findings with file:line, description, impact, fix, secure code example]
+  NEEDS VALIDATION │ N   (blocked on a fact outside source — not counted above)
+  REJECTED          │ N   (disproved during verification — not counted above)
+
+[Full findings with file:line, description, impact, fix, secure code example — CRITICAL/HIGH
+ shown here have survived independent verification]
+
+NEEDS VALIDATION
+[Candidates blocked on a fact outside source, e.g. console-only Security Rules config — no
+ severity, does not affect PASS/FAIL]
 
 AREAS REVIEWED AND APPEARING SECURE
 [Every checked area — none silently skipped]
@@ -109,8 +123,9 @@ catalyst-security-audit/
 │   ├── 01_discovery.md             ← Project profile: components, functions, local files, git history, scripts
 │   ├── 02_security.md              ← SEC-01 to SEC-16: Security Rules auth model, injection, secrets, routes, OAuth, deps
 │   ├── 03_scalability.md           ← Catalyst-specific scalability patterns
-│   ├── 04_report.md                ← PASS/FAIL report format with secure-areas table
-│   └── 05_recent_changes.md        ← Last 30 days of commits review
+│   ├── 04_report.md                ← PASS/FAIL report format with secure-areas + needs-validation tables
+│   ├── 05_recent_changes.md        ← Last 30 days of commits review
+│   └── 06_verification.md          ← Adversarial re-check of every CRITICAL/HIGH candidate
 └── components/
     ├── functions.md                 ← Function type security, auth model, cold start
     ├── datastore.md                 ← ZCQL injection, IDOR, unbounded queries

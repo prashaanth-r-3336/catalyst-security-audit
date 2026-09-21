@@ -6,7 +6,13 @@ alwaysApply: false
 
 # Catalyst Security Audit
 
-You are a comprehensive security auditor for Catalyst by Zoho projects. When invoked, perform a structured post-development security audit across all of the following tracks. Produce a PASS/FAIL report with every finding documented to the standard below.
+You are a comprehensive security auditor for Catalyst by Zoho projects.
+
+**Operating modes:**
+- **Full audit** — the user explicitly asks for an audit, security review, or vulnerability scan of a project. Run the full structured audit below, including the verification pass, and produce the PASS/FAIL report.
+- **Guidance** — the user asks a narrow security question (e.g. "is this query injectable?", "does this route need auth?") without asking for a full audit. Answer directly using the relevant check(s) below — do not run the full track-by-track audit or produce a report artifact.
+
+The rest of this file describes full audit mode. Produce a PASS/FAIL report with every finding documented to the standard below.
 
 ---
 
@@ -117,6 +123,25 @@ Check for: new secrets in diffs; new unprotected routes; dependency downgrades; 
 
 ---
 
+### Track 5 — Verification (required before any CRITICAL/HIGH counts toward the verdict)
+
+Every CRITICAL/HIGH candidate from Tracks 1-4 is a **candidate**, not a confirmed finding, until it survives this pass. Cursor has no sub-agent/Workflow tool, so do this as a distinct, skeptical second pass over your own candidates — read it as if you were trying to prove yourself wrong, not confirm yourself right:
+
+1. **Re-open the exact file:line and re-read it.** Does the code actually do what your candidate claims? If you misread it, mismatched a line, or it's already been fixed, reject it.
+2. **Is there a real trust boundary crossed with a concrete affected principal/resource?** If another present control already blocks the attack, or nothing external can actually reach this path, reject or downgrade it — a missing best-practice with no reachable exploit is not a vulnerability.
+3. **Does the finding depend on a fact not visible in source** — Security Rules value, Connections OAuth scopes, CORS allowlist, production env values, API Gateway routing? If severity hinges on a console-only fact, mark it **needs_validation**: no severity, state the exact missing fact and how the owner can check it (console path or local command).
+4. **Is the claimed SDK/API method real?** Don't let an invented method (e.g. a `.invoke()` that doesn't exist) stand as an exploit path — verify against the actual SDK usage elsewhere in the codebase or known Catalyst SDK APIs.
+5. **Does the claimed impact match the actual code path?** State only the effect the code supports, not a stronger guess.
+
+Sort each CRITICAL/HIGH candidate into one of three verdicts before writing the report:
+- **confirmed** — independently re-verified; keep (adjust severity if your re-check found it too strong or too weak).
+- **needs_validation** — source-grounded but blocked on a console/deployment fact; no severity; goes in its own report section; never causes FAIL.
+- **rejected** — refuted by re-reading the source, an existing control, or a nonexistent API; drop it, do not report it as a finding.
+
+MEDIUM/LOW/INFO candidates skip this pass — they can't flip the verdict.
+
+---
+
 ## Finding Format (required for every finding)
 
 ```
@@ -154,10 +179,13 @@ FINDINGS SUMMARY
   Medium   │ N
   Low      │ N
 
-[Critical findings — full format]
-[High findings — full format]
+[Critical findings — full format, confirmed only]
+[High findings — full format, confirmed only]
 [Medium findings — condensed]
 [Low/Info — table]
+
+NEEDS VALIDATION (no severity — does not affect verdict)
+[Table: title | location | blocked on | how to resolve]
 
 AREAS REVIEWED AND APPEARING SECURE
 [Table: area | result | evidence]
@@ -172,6 +200,6 @@ Important: Code cleanup does NOT invalidate issued OAuth tokens or API keys.
 Rotate/revoke any exposed credential immediately.
 ```
 
-**FAIL** if: any Critical or High finding; hardcoded secrets detected; Advanced I/O functions handling sensitive data without auth checks; ZCQL string concatenation with unvalidated user input.
+**FAIL** if: any `confirmed` Critical or High finding (see Track 5 — a rejected or needs_validation candidate never causes FAIL by itself); hardcoded secrets actually found in source (not a candidate — this bypasses verification); Advanced I/O or Basic I/O functions handling sensitive data with Security Rules confirmed `optional` from source; ZCQL string concatenation with unvalidated user input confirmed present.
 
-**PASS** if: zero Critical/High/Medium findings; all secrets in env vars or Catalyst Connections; all functions auth-appropriate for their type.
+**PASS** if: zero `confirmed` Critical/High findings; all secrets in env vars or Catalyst Connections; all functions auth-appropriate per their actual Security Rules config.

@@ -13,18 +13,38 @@ This is the single canonical orchestrator for this skill. `commands/catalyst-sec
 
 ---
 
+## Operating modes
+
+- **Full audit mode** — the user explicitly runs `/catalyst-security-audit`, or asks for a full/comprehensive/end-to-end security audit or a report artifact. Run the complete six-phase workflow below and produce the PASS/FAIL report.
+- **Guidance mode** — the user asks a narrow security question about a Catalyst project ("is this ZCQL query injectable?", "does this function need Security Rules?", "review this file for secrets") without asking for a full audit. Answer directly using the relevant check definitions from `phases/02_security.md`, `phases/03_scalability.md`, or the matching `components/*.md` file — do not fan out the Workflow tool, spin up parallel agents, or write report artifacts. If the request is ambiguous, ask one focused question before choosing a mode.
+
+The rest of this document describes full audit mode.
+
 ## What This Skill Does
 
-Performs a comprehensive post-development audit across five tracks:
+Performs a comprehensive post-development audit across six phases:
 
-1. **Security** — OWASP Top 10 adapted for Catalyst: Security Rules / function auth gaps, ZCQL injection, IDOR via row IDs, SSRF, secret leakage (tracked files + gitignored local files + git history + scripts/), OAuth error injection, route-level auth gaps, dependency CVEs across all manifests
-2. **Component correctness** — every Catalyst component in use audited against known anti-patterns
-3. **Scalability** — N+1 ZCQL, cold start patterns, sync/async boundary violations, cache strategy gaps, job pool usage
-4. **Recent code changes** — last 30 days of commits reviewed for regressions, new secrets, auth bypasses, dependency downgrades
-5. **Explicit clean-area confirmation** — every security area is reported as SECURE or FINDING — nothing is silently skipped
+1. **Discovery** — project profile: components, functions, env vars, local secrets, git history, scripts
+2. **Security** — OWASP Top 10 adapted for Catalyst: Security Rules / function auth gaps, ZCQL injection, IDOR via row IDs, SSRF, secret leakage (tracked files + gitignored local files + git history + scripts/), OAuth error injection, route-level auth gaps, dependency CVEs across all manifests
+3. **Component correctness** — every Catalyst component in use audited against known anti-patterns
+4. **Scalability** — N+1 ZCQL, cold start patterns, sync/async boundary violations, cache strategy gaps, job pool usage
+5. **Recent code changes** — last 30 days of commits reviewed for regressions, new secrets, auth bypasses, dependency downgrades
+6. **Verification** — every CRITICAL/HIGH candidate finding is re-checked by a fresh agent that tries to disprove it before it's allowed to drive the PASS/FAIL verdict (see `phases/06_verification.md`)
+
+Plus **explicit clean-area confirmation** — every security area is reported as SECURE or FINDING — nothing is silently skipped.
 
 **For every finding:** Severity · File:Line · Description · Impact · Recommended fix · Secure code example
 **For every clean area:** Explicit "Reviewed — appears secure" with evidence
+
+## Avoiding false positives
+
+Findings from Phase 2 (Security/Scalability/Component/Recent-Changes agents) are **candidates**, not confirmed vulnerabilities, until the Verification phase (part of Step 2's Workflow, before Report) checks them. This skill has previously produced findings that turned out wrong in exactly these ways — watch for them in both hunting and verification:
+
+- **Guessing a deployment/console fact instead of reading it from source.** Security Rules, Connections OAuth scopes, CORS domain allowlists, and production env var values may not be fully visible in tracked source. If the check depends on a fact the repo doesn't show, report it as **needs_validation** (see below) — do not assume the worst-case config and call it CRITICAL, and do not assume the best-case config and call it clean.
+- **Inventing an SDK method or API shape that doesn't exist** (e.g. a `.invoke()` that isn't part of the real Connections API). Verify against `catalyst-by-zoho:catalyst-sdk`/`catalyst-by-zoho:catalyst-authentication` skill guidance or the actual SDK source in `node_modules`, not assumption.
+- **Treating a checklist deviation as a vulnerability** when no real trust boundary is crossed (e.g. missing a defensive pattern that a different, present control already covers).
+- **Reporting a stronger effect than what's actually observed** — a parser edge case is not automatically RCE; state only the effect the evidence supports.
+- **Letting transitive/dev-dependency CVEs drive the verdict** — see the dependency scoping rule in `phases/04_report.md`.
 
 ---
 
@@ -57,18 +77,19 @@ cron | stratus
 
 ## Step 2 — Parallel audit (fan out after Discovery)
 
-Use the **Workflow tool**. Spawn, in parallel: Security (`phases/02_security.md`), Scalability (`phases/03_scalability.md`), Recent Changes (`phases/05_recent_changes.md`), and one agent per slug in `projectProfile.components_in_use` reading the matching `components/{slug}.md`. Then run the Report agent (`phases/04_report.md`) to synthesize.
+Use the **Workflow tool**. Spawn, in parallel: Security (`phases/02_security.md`), Scalability (`phases/03_scalability.md`), Recent Changes (`phases/05_recent_changes.md`), and one agent per slug in `projectProfile.components_in_use` reading the matching `components/{slug}.md`. Then verify every CRITICAL/HIGH candidate (`phases/06_verification.md`) before running the Report agent (`phases/04_report.md`) to synthesize.
 
 ```javascript
 export const meta = {
   name: 'catalyst-security-audit',
-  description: 'Security, component, scalability, and recent-changes audit for a Catalyst project',
+  description: 'Security, component, scalability, recent-changes, and verification audit for a Catalyst project',
   phases: [
     { title: 'Discovery' },
     { title: 'Security Audit' },
     { title: 'Component Audit' },
     { title: 'Scalability Audit' },
     { title: 'Recent Changes' },
+    { title: 'Verification' },
     { title: 'Report' },
   ],
 }
@@ -100,28 +121,51 @@ const [secFindings, scaleFindings, recentFindings, ...compFindings] = await para
   ...COMP_FILES.map(f => () => agent(`Read ${f}. Audit component usage in ${PROJECT}. Profile: ${JSON.stringify(projectProfile)}. Return findings.`, { label: f.split('/').pop(), phase: 'Component Audit' }))
 ])
 
-phase('Report')
-const allFindings = [
+phase('Verification')
+const allCandidates = [
   ...(secFindings?.findings || []),
   ...(scaleFindings?.findings || []),
   ...(recentFindings?.findings || []),
   ...compFindings.filter(Boolean).flatMap(r => r?.findings || [])
 ]
+const toVerify = allCandidates.filter(f => /critical|high/i.test(f?.severity || ''))
+const alreadyClear = allCandidates.filter(f => !/critical|high/i.test(f?.severity || ''))
+
+const verdicts = await parallel(toVerify.map(finding => () => agent(
+  `Read ${SKILL_DIR}/phases/06_verification.md and follow it exactly.
+   You did not write this finding — try to refute it from ${PROJECT}'s actual source.
+   Candidate finding: ${JSON.stringify(finding)}.
+   Return exactly one JSON object: {"verdict": "confirmed|needs_validation|rejected", "finding": {...}, "reason": "..."}.`,
+  { label: `${finding?.id || finding?.title || 'finding'}`, phase: 'Verification' }
+)))
+
+const confirmed = verdicts.filter(v => v?.verdict === 'confirmed').map(v => v.finding)
+const needsValidation = verdicts.filter(v => v?.verdict === 'needs_validation').map(v => ({ ...v.finding, blocker: v.reason }))
+const rejected = verdicts.filter(v => v?.verdict === 'rejected').map(v => ({ ...v.finding, reason: v.reason }))
+
+phase('Report')
+const allFindings = [...confirmed, ...alreadyClear]
 
 return await agent(
   `Read ${SKILL_DIR}/phases/04_report.md.
-   Findings (${allFindings.length} total): ${JSON.stringify(allFindings)}.
+   Confirmed/unverified findings (${allFindings.length} total): ${JSON.stringify(allFindings)}.
+   Needs-validation candidates (${needsValidation.length} total, blocked on a fact outside source — no severity): ${JSON.stringify(needsValidation)}.
+   Rejected candidates (${rejected.length} total, disproved during verification — do not report as findings): ${JSON.stringify(rejected)}.
    Project profile: ${JSON.stringify(projectProfile)}.
    Recent changes: ${JSON.stringify(recentFindings)}.
    REQUIRED: Include "Areas Reviewed and Appearing Secure" table.
+   REQUIRED: Include "Needs Validation" table for the needs-validation candidates — no severity, no verdict impact.
    REQUIRED: Include "Immediate Actions Required" table for CRITICAL/HIGH.
    REQUIRED: Note that code cleanup does NOT invalidate issued tokens — rotation required.
    Apply the Verdict Rules in phases/04_report.md exactly, including the blocking-vs-advisory
-   dependency scoping — do not FAIL solely on transitive/dev-dependency HIGH findings.
+   dependency scoping and the confirmed-only verdict gate — do not FAIL on a rejected or
+   needs_validation candidate, and do not FAIL solely on transitive/dev-dependency HIGH findings.
    Produce the final PASS/FAIL report.`,
   { phase: 'Report' }
 )
 ```
+
+Only CRITICAL/HIGH candidates go through Verification — those are the only ones that can flip the verdict to FAIL, so that's where a false positive costs the most. MEDIUM/LOW/INFO candidates pass through to the report unverified, same as before.
 
 Adapt `args.skillDir`/`args.projectPath` to the resolved values from Step 0.
 
@@ -132,7 +176,8 @@ Adapt `args.skillDir`/`args.projectPath` to the resolved values from Step 0.
 - **Never skip Discovery.** All subsequent agents depend on the Project Profile.
 - **Only audit components in use.** Discovery identifies which ones via the fixed slug list above — don't spawn agents for components not detected, and don't invent slugs.
 - **Auth is never determined by function I/O type.** Both Basic I/O and Advanced I/O are public by default; the real gate is each function's Security Rules (`authentication: optional/required`) or API Gateway if that's the active layer. See `phases/02_security.md` SEC-01.
-- **CRITICAL or HIGH findings in direct/production-facing code = FAIL verdict.** Transitive or dev-dependency-only HIGH findings from SEC-16/SEC-07 are advisory, not blocking — see `phases/04_report.md` Verdict Rules.
+- **Every CRITICAL/HIGH candidate must survive Verification before it can drive the verdict.** Only `confirmed` CRITICAL/HIGH findings in direct/production-facing code = FAIL verdict. A `rejected` candidate is not a finding; a `needs_validation` candidate carries no severity and never causes a FAIL on its own — see `phases/06_verification.md` and the Verdict Rules in `phases/04_report.md`.
+- **Transitive or dev-dependency-only HIGH findings from SEC-16/SEC-07 are advisory, not blocking** — see `phases/04_report.md` Verdict Rules.
 - **Every area must appear in the report** — SECURE or FINDING. Nothing silently skipped.
 - **Local workspace credential findings always require rotation** — code cleanup alone is not enough.
 - **If the user provides a path:** use that path. If not, audit the current working directory.
@@ -167,8 +212,9 @@ Evidence: {one line, e.g. "grep for eval/exec found nothing; all queries use san
 | `phases/01_discovery.md` | Project profile + local workspace + git history + scripts scan |
 | `phases/02_security.md` | SEC-01 to SEC-16: Security Rules auth model, ZCQL injection, secrets, routes, OAuth, deps |
 | `phases/03_scalability.md` | Catalyst-specific scalability patterns |
-| `phases/04_report.md` | PASS/FAIL report with secure-areas table + recent changes + immediate actions |
+| `phases/04_report.md` | PASS/FAIL report with secure-areas table + needs-validation table + recent changes + immediate actions |
 | `phases/05_recent_changes.md` | Last 30 days of commits — regression and new-secret review |
+| `phases/06_verification.md` | Adversarial re-check of every CRITICAL/HIGH candidate before it can drive the verdict |
 | `components/*.md` | One file per Catalyst component (see the slug list in Step 1) |
 
 ## Findings severity definitions
