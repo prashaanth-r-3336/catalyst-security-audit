@@ -1,6 +1,6 @@
 {
   "name": "catalyst-security-audit",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Comprehensive post-development security audit for Catalyst by Zoho projects. Covers OWASP Top 10 (Catalyst-adapted), all 15 Catalyst components, scalability patterns, git history secret scanning, local workspace credential scan, and recent code change review. Produces PASS/FAIL reports with file:line findings and secure code examples.",
   "author": {
     "name": "Prashaanth R",
